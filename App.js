@@ -9,42 +9,25 @@ import {
   ListView,
   FlatList,
   ImageBackground,
-  TouchableOpacity
+  TouchableOpacity,
+  StatusBar,
 } from "react-native";
 
-import { Entypo } from "@expo/vector-icons"
+import { Entypo } from "@expo/vector-icons";
 
 import data from "./data";
 
-const NAVBAR_HEIGHT = 64;
-const STATUS_BAR_HEIGHT = Platform.select({ ios: 20, android: 24 });
-
+const STATUS_BAR_HEIGHT = Platform.select({ ios: 20, android: StatusBar.currentHeight });
 const AnimatedListView = Animated.createAnimatedComponent(FlatList);
 
 export default class App extends Component {
-  constructor(props) {
-    super(props);
-
-    const scrollAnim = new Animated.Value(0);
-    const offsetAnim = new Animated.Value(0);
-
-    this.state = {
-      scrollAnim,
-      offsetAnim,
-      clampedScroll: Animated.diffClamp(
-        Animated.add(
-          scrollAnim.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0, 1],
-            extrapolateLeft: "clamp",
-          }),
-          offsetAnim,
-        ),
-        0,
-        NAVBAR_HEIGHT - STATUS_BAR_HEIGHT,
-      ),
-    };
-  }
+  state = {
+    scrollAnim: new Animated.Value(0),
+    offsetAnim: new Animated.Value(0),
+    hiddenAnimation: new Animated.Value(0),
+    headerHeight: 0,
+    textHeight: 0,
+  };
 
   _clampedScrollValue = 0;
   _offsetValue = 0;
@@ -56,7 +39,7 @@ export default class App extends Component {
       this._scrollValue = value;
       this._clampedScrollValue = Math.min(
         Math.max(this._clampedScrollValue + diff, 0),
-        NAVBAR_HEIGHT - STATUS_BAR_HEIGHT,
+        this.getHeaderHeight(),
       );
     });
     this.state.offsetAnim.addListener(({ value }) => {
@@ -78,11 +61,13 @@ export default class App extends Component {
   };
 
   _onMomentumScrollEnd = () => {
+    const NAVBAR_HEIGHT = this.getHeaderHeight();
+    const HEADER_HEIGHT = this.state.headerHeight;
+
     const toValue =
-      this._scrollValue > NAVBAR_HEIGHT &&
-      this._clampedScrollValue > (NAVBAR_HEIGHT - STATUS_BAR_HEIGHT) / 2
-        ? this._offsetValue + NAVBAR_HEIGHT
-        : this._offsetValue - NAVBAR_HEIGHT;
+      this._scrollValue > HEADER_HEIGHT && this._clampedScrollValue > NAVBAR_HEIGHT / 2
+        ? this._offsetValue + HEADER_HEIGHT
+        : this._offsetValue - HEADER_HEIGHT;
 
     Animated.timing(this.state.offsetAnim, {
       toValue,
@@ -100,24 +85,63 @@ export default class App extends Component {
     );
   };
 
+  onHeaderLayout = e => {
+    this.setState({
+      headerHeight: e.nativeEvent.layout.height,
+    });
+    this.handleShowList()
+  };
+
+  onHeaderTextLayout = e => {
+    this.setState({
+      textHeight: e.nativeEvent.layout.height,
+    });
+    this.handleShowList()
+  };
+
+  handleShowList = () => {
+    if (this.state.headerHeight !== 0 && this.state.textHeight !== 0) {
+      this.state.hiddenAnimation.setValue(1);
+    }
+  };
+
+  getHeaderHeight = () => {
+    const { headerHeight, textHeight } = this.state;
+    return headerHeight - textHeight - STATUS_BAR_HEIGHT;
+  };
+
   render() {
-    const { clampedScroll } = this.state;
+    const { headerHeight, textHeight, offsetAnim, scrollAnim, hiddenAnimation } = this.state;
+    const HEADER_HEIGHT = this.getHeaderHeight() < 0 ? 1 : this.getHeaderHeight();
+
+    const clampedScroll = Animated.diffClamp(
+      Animated.add(
+        scrollAnim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, 1],
+          extrapolateLeft: "clamp",
+        }),
+        offsetAnim,
+      ),
+      0,
+      HEADER_HEIGHT,
+    );
 
     const navbarTranslate = clampedScroll.interpolate({
-      inputRange: [0, NAVBAR_HEIGHT - STATUS_BAR_HEIGHT],
-      outputRange: [0, -(NAVBAR_HEIGHT - STATUS_BAR_HEIGHT)],
+      inputRange: [0, HEADER_HEIGHT],
+      outputRange: [0, -HEADER_HEIGHT],
       extrapolate: "clamp",
     });
     const navbarOpacity = clampedScroll.interpolate({
-      inputRange: [0, NAVBAR_HEIGHT - STATUS_BAR_HEIGHT],
+      inputRange: [0, HEADER_HEIGHT],
       outputRange: [1, 0],
       extrapolate: "clamp",
     });
 
     return (
-      <View style={styles.fill}>
+      <Animated.View style={[styles.fill, { opacity: hiddenAnimation }]}>
         <AnimatedListView
-          contentContainerStyle={styles.contentContainer}
+          contentContainerStyle={{ paddingTop: HEADER_HEIGHT }}
           data={data}
           renderItem={this._renderRow}
           keyExtractor={this.keyExtractor}
@@ -130,8 +154,18 @@ export default class App extends Component {
             { useNativeDriver: true },
           )}
         />
-        <Animated.View style={[styles.navbar, { transform: [{ translateY: navbarTranslate }] }]}>
-          <Animated.View style={{ opacity: navbarOpacity, flexDirection: "row", flex: 1, justifyContent: "space-around" }}>
+        <Animated.View
+          style={[styles.navbar, { transform: [{ translateY: navbarTranslate }] }]}
+          onLayout={this.onHeaderLayout}
+        >
+          <Animated.View
+            style={{
+              opacity: navbarOpacity,
+              flexDirection: "row",
+              flex: 1,
+              justifyContent: "space-around",
+            }}
+          >
             <TouchableOpacity>
               <Entypo name="circle" size={50} color="#000" />
             </TouchableOpacity>
@@ -142,9 +176,11 @@ export default class App extends Component {
               <Entypo name="circle" size={50} color="#000" />
             </TouchableOpacity>
           </Animated.View>
-          <Animated.Text style={[styles.title]}>50 Results</Animated.Text>
+          <Text style={[styles.title]} onLayout={this.onHeaderTextLayout}>
+            {data.length} Results
+          </Text>
         </Animated.View>
-      </View>
+      </Animated.View>
     );
   }
 }
@@ -163,12 +199,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     paddingTop: STATUS_BAR_HEIGHT,
   },
-  contentContainer: {
-    paddingTop: NAVBAR_HEIGHT + STATUS_BAR_HEIGHT,
-  },
+
   title: {
     color: "#333333",
-    textAlign: 'center',
+    textAlign: "center",
   },
   row: {
     height: 300,
