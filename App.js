@@ -18,7 +18,7 @@ import { Entypo } from "@expo/vector-icons";
 import data from "./data";
 
 const STATUS_BAR_HEIGHT = Platform.select({ ios: 20, android: StatusBar.currentHeight });
-const AnimatedListView = Animated.createAnimatedComponent(FlatList);
+const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 
 export default class App extends Component {
   state = {
@@ -139,10 +139,11 @@ export default class App extends Component {
     });
 
     return (
-      <Animated.View style={[styles.fill, { opacity: hiddenAnimation }]}>
-        <AnimatedListView
+      <Animated.View style={styles.fill}>
+        <AnimatedFlatList
           contentContainerStyle={{ paddingTop: HEADER_HEIGHT }}
           data={data}
+          style={{ opacity: hiddenAnimation }}
           renderItem={this._renderRow}
           keyExtractor={this.keyExtractor}
           scrollEventThrottle={1}
